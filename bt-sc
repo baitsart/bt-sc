@@ -1,0 +1,229 @@
+#!/usr/bin/env python3
+
+#-*- coding: utf-8 -*-     
+#----------------------------------------------------------------------#
+#                   * Bluetooth Simple Connector *                     #
+#----------------------------------------------------------------------#
+# Es el tema de memorizar dispositivos bluetooth convierte en un       #
+# problema, que nunca los "re-conecta". Por eso pensé que un script    #
+# que solo busque, liste y conecte, sería más práctico.                # 
+#----------------------------------------------------------------------#
+# GNU License. You are free to modify and redistribute	               #
+# by Rodrigo Esteves baitsart@gmail.com www.youtube.com/user/baitsart  #
+#----------------------------------------------------------------------#
+
+import subprocess
+import threading
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('AppIndicator3', '0.1')
+
+from gi.repository import Gtk, AppIndicator3, GLib
+
+APPINDICATOR_ID = "bluetooth_simple_connector"
+
+
+def run_cmd(cmd):
+    return subprocess.check_output(cmd, shell=True).decode().splitlines()
+
+def forget_all_devices():
+    devices = run_cmd("bluetoothctl devices")
+
+    for line in devices:
+        parts = line.split(" ", 2)
+        if len(parts) >= 2:
+            mac = parts[1]
+            subprocess.call(f"bluetoothctl remove {mac}", shell=True)
+
+def reset_and_scan():
+    subprocess.call("bluetoothctl power off", shell=True)
+    subprocess.call("sleep 1", shell=True)
+    subprocess.call("bluetoothctl power on", shell=True)
+    subprocess.call("sleep 1", shell=True)
+
+    forget_all_devices()
+
+    subprocess.call("bluetoothctl scan on", shell=True)
+    subprocess.call("sleep 5", shell=True)
+    subprocess.call("bluetoothctl scan off", shell=True)
+    
+def get_devices():
+    """
+    Lista dispositivos detectados previamente por bluetoothctl
+    """
+    output = run_cmd("bluetoothctl devices")
+    devices = []
+
+    for line in output:
+        # Ej: Device AA:BB:CC:DD:EE:FF Nombre
+        parts = line.split(" ", 2)
+        if len(parts) >= 3:
+            devices.append((parts[1], parts[2]))
+    return devices
+
+
+def get_connected_devices():
+    output = run_cmd("bluetoothctl devices Connected")
+
+    devices = []
+
+    for line in output:
+        parts = line.split(" ", 2)
+        if len(parts) >= 3:
+            devices.append((parts[1], parts[2]))
+
+    return devices
+    
+def scan_and_collect():
+    proc = subprocess.Popen(
+        ["bluetoothctl"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    proc.stdin.write("scan on\n")
+    proc.stdin.flush()
+
+    import time
+    time.sleep(6)
+
+    proc.stdin.write("scan off\n")
+    proc.stdin.flush()
+
+    proc.stdin.write("devices\n")
+    proc.stdin.flush()
+
+    output = proc.communicate()[0].splitlines()
+
+    devices = []
+    for line in output:
+        if line.startswith("Device "):
+            parts = line.split(" ", 2)
+            if len(parts) >= 3:
+                devices.append((parts[1], parts[2]))
+
+    return devices
+
+def connect_device(mac):
+    subprocess.call(f"bluetoothctl connect {mac}", shell=True)
+
+def disconnect_device(mac):
+    subprocess.call(f"bluetoothctl disconnect {mac}", shell=True)
+
+def forget_disconnected_devices():
+    all_devices = set()
+    connected_devices = set()
+
+    # Todos los dispositivos conocidos
+    for line in run_cmd("bluetoothctl devices"):
+        parts = line.split(" ", 2)
+        if len(parts) >= 2:
+            all_devices.add(parts[1])
+
+    # Dispositivos conectados actualmente
+    for line in run_cmd("bluetoothctl devices Connected"):
+        parts = line.split(" ", 2)
+        if len(parts) >= 2:
+            connected_devices.add(parts[1])
+
+    # Olvidar sólo los desconectados
+    for mac in all_devices - connected_devices:
+        subprocess.call(f"bluetoothctl remove {mac}", shell=True)
+
+class BluetoothIndicator:
+    def __init__(self):
+        self.indicator = AppIndicator3.Indicator.new(
+            APPINDICATOR_ID,
+            "",
+            AppIndicator3.IndicatorCategory.SYSTEM_SERVICES
+        )
+        
+        self.indicator.set_icon_full(
+            "/home/pc/.local/share/icons/bt-sc.png",
+            "Bluetooth Simple Connector"
+        )
+        
+        self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+
+        self.menu = Gtk.Menu()
+
+        self.refresh_item = Gtk.MenuItem(label="🔄 Escanear")
+        self.refresh_item.connect("activate", self.refresh_devices)
+        self.menu.append(self.refresh_item)
+
+        self.devices_menu = Gtk.MenuItem(label="Dispositivos")
+
+        self.connected_menu = Gtk.MenuItem(label="Conectados")
+        self.connected_submenu = Gtk.Menu()
+        self.connected_menu.set_submenu(self.connected_submenu)
+        self.menu.append(self.connected_menu)
+
+        self.devices_submenu = Gtk.Menu()
+        self.devices_menu.set_submenu(self.devices_submenu)
+        self.menu.append(self.devices_menu)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        quit_item = Gtk.MenuItem(label="Salir")
+        quit_item.connect("activate", Gtk.main_quit)
+        self.menu.append(quit_item)
+
+        self.menu.show_all()
+        self.indicator.set_menu(self.menu)
+
+        self.refresh_devices(None)
+        
+
+    def reset_bluetooth(self, _):
+
+        def worker():
+
+            forget_disconnected_devices()
+            devices = scan_and_collect()
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def refresh_devices(self, _):
+    
+        for item in self.devices_submenu.get_children():
+            self.devices_submenu.remove(item)
+    
+        def connect_device_local(mac):
+            subprocess.call("bluetoothctl scan off", shell=True)
+            subprocess.call("sleep 1", shell=True)
+            subprocess.call(f"bluetoothctl connect {mac}", shell=True)
+    
+        def worker():
+            devices = scan_and_collect()
+            connected_devices = get_connected_devices()
+
+            def update_ui():
+    
+                # Limpiar conectados
+                for item in self.connected_submenu.get_children():
+                    self.connected_submenu.remove(item)
+    
+                # Dispositivos
+                for mac, name in devices:
+                    item = Gtk.MenuItem(label=f"{name} ({mac})")
+                    item.connect("activate", lambda _, m=mac: connect_device_local(m))
+                    self.devices_submenu.append(item)
+    
+                # Conectados
+                for mac, name in connected_devices:
+                    item = Gtk.MenuItem(label=f"❌ {name}")
+                    item.connect("activate", lambda _, m=mac: disconnect_device(m))
+                    self.connected_submenu.append(item)
+    
+                self.devices_submenu.show_all()
+                self.connected_submenu.show_all()
+    
+            GLib.idle_add(update_ui)
+    
+        threading.Thread(target=worker, daemon=True).start()
+
+if __name__ == "__main__":
+    BluetoothIndicator()
+    Gtk.main()

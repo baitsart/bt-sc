@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Bluetooth Simple Connector
+Comment=Scan and connect Bluetooth devices
+Exec=bt-sc
+Icon=bt-sc
+Terminal=false
+Categories=Utility;
+StartupNotify=false
