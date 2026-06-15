@@ -26,22 +26,11 @@ APPINDICATOR_ID = "bluetooth_simple_connector"
 def run_cmd(cmd):
     return subprocess.check_output(cmd, shell=True).decode().splitlines()
 
-def forget_all_devices():
-    devices = run_cmd("bluetoothctl devices")
-
-    for line in devices:
-        parts = line.split(" ", 2)
-        if len(parts) >= 2:
-            mac = parts[1]
-            subprocess.call(f"bluetoothctl remove {mac}", shell=True)
-
 def reset_and_scan():
     subprocess.call("bluetoothctl power off", shell=True)
     subprocess.call("sleep 1", shell=True)
     subprocess.call("bluetoothctl power on", shell=True)
     subprocess.call("sleep 1", shell=True)
-
-    forget_all_devices()
 
     subprocess.call("bluetoothctl scan on", shell=True)
     subprocess.call("sleep 5", shell=True)
@@ -112,25 +101,6 @@ def connect_device(mac):
 def disconnect_device(mac):
     subprocess.call(f"bluetoothctl disconnect {mac}", shell=True)
 
-def forget_disconnected_devices():
-    all_devices = set()
-    connected_devices = set()
-
-    # Todos los dispositivos conocidos
-    for line in run_cmd("bluetoothctl devices"):
-        parts = line.split(" ", 2)
-        if len(parts) >= 2:
-            all_devices.add(parts[1])
-
-    # Dispositivos conectados actualmente
-    for line in run_cmd("bluetoothctl devices Connected"):
-        parts = line.split(" ", 2)
-        if len(parts) >= 2:
-            connected_devices.add(parts[1])
-
-    # Olvidar sólo los desconectados
-    for mac in all_devices - connected_devices:
-        subprocess.call(f"bluetoothctl remove {mac}", shell=True)
 
 class BluetoothIndicator:
     def __init__(self):
@@ -180,7 +150,6 @@ class BluetoothIndicator:
 
         def worker():
 
-            forget_disconnected_devices()
             devices = scan_and_collect()
 
         threading.Thread(target=worker, daemon=True).start()
@@ -191,7 +160,7 @@ class BluetoothIndicator:
             self.devices_submenu.remove(item)
     
         def connect_device_local(mac):
-            subprocess.call("bluetoothctl scan off", shell=True)
+            subprocess.call(f"bluetoothctl disconnect {mac}", shell=True)
             subprocess.call("sleep 1", shell=True)
             subprocess.call(f"bluetoothctl connect {mac}", shell=True)
     
