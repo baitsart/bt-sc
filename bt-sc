@@ -26,29 +26,11 @@ APPINDICATOR_ID = "bluetooth_simple_connector"
 def run_cmd(cmd):
     return subprocess.check_output(cmd, shell=True).decode().splitlines()
 
-def reset_and_scan():
-    subprocess.call("bluetoothctl power off", shell=True)
-    subprocess.call("sleep 1", shell=True)
-    subprocess.call("bluetoothctl power on", shell=True)
-    subprocess.call("sleep 1", shell=True)
-
-    subprocess.call("bluetoothctl scan on", shell=True)
-    subprocess.call("sleep 5", shell=True)
-    subprocess.call("bluetoothctl scan off", shell=True)
-    
-def get_devices():
-    """
-    Lista dispositivos detectados previamente por bluetoothctl
-    """
-    output = run_cmd("bluetoothctl devices")
-    devices = []
-
-    for line in output:
-        # Ej: Device AA:BB:CC:DD:EE:FF Nombre
-        parts = line.split(" ", 2)
-        if len(parts) >= 3:
-            devices.append((parts[1], parts[2]))
-    return devices
+def forget_all_devices():
+    subprocess.call(
+        "bluetoothctl devices | awk '{print $2}' | while read mac; do bluetoothctl remove \"$mac\"; done",
+        shell=True
+    )
 
 
 def get_connected_devices():
@@ -87,6 +69,7 @@ def scan_and_collect():
     output = proc.communicate()[0].splitlines()
 
     devices = []
+
     for line in output:
         if line.startswith("Device "):
             parts = line.split(" ", 2)
@@ -146,11 +129,12 @@ class BluetoothIndicator:
         self.refresh_devices(None)
         
 
-    def reset_bluetooth(self, _):
-
         def worker():
-
+            
+            forget_all_devices()
             devices = scan_and_collect()
+
+            connected_devices = get_connected_devices()
 
         threading.Thread(target=worker, daemon=True).start()
 
