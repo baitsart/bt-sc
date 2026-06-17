@@ -28,6 +28,8 @@ chmod +x ~/.local/share/applications/bluetooth-simple-connector.desktop
 cp ./bt-sc ~/.local/bin/
 chmod +x ~/.local/bin/bt-sc
 
+cp ./exec-bt-sc.py ~/.local/bin/.exec-bt-sc.py
+chmod +x ~/.local/bin/.exec-bt-sc.py
 
 Nota importante sobre el .desktop
 
