@@ -82,6 +82,22 @@ def scan_and_collect():
 
     return devices
 
+def forget_only_stale_devices(visible_devices, connected_devices):
+    visible = {mac for mac, _ in visible_devices}
+    connected = {mac for mac, _ in connected_devices}
+
+    known = run_cmd("bluetoothctl devices")
+    known_macs = {
+        line.split(" ", 2)[1]
+        for line in known
+        if line.startswith("Device ")
+    }
+
+    to_remove = known_macs - visible - connected
+
+    for mac in to_remove:
+        subprocess.call(f"bluetoothctl remove {mac}", shell=True)
+        
 def connect_device(mac):
     subprocess.call(f"bluetoothctl connect {mac}", shell=True)
 
@@ -146,7 +162,9 @@ class BluetoothIndicator:
         def worker():
             devices = scan_and_collect()
             connected_devices = get_connected_devices()
-
+            
+            forget_only_stale_devices(devices, connected_devices)
+    
             def update_ui():
     
                 # Limpiar conectados

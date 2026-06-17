@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-for i in 1 2; do
+while bluetoothctl devices | grep -q '^Device '; do
     bluetoothctl devices | awk '{print $2}' |
-    while read mac; do
-        bluetoothctl remove "$mac" 
+    while read -r mac; do
+        bluetoothctl remove "$mac"
     done
 done
 
-exec "$HOME/.local/bin/.exec-bt-sc.py" 
+exec "$HOME/.local/bin/.exec-bt-sc.py"
