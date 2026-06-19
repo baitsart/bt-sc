@@ -54,7 +54,7 @@ def scan_and_collect():
         ["bluetoothctl"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
         text=True
     )
 
@@ -62,42 +62,23 @@ def scan_and_collect():
     proc.stdin.flush()
 
     import time
-    time.sleep(6)
+    time.sleep(1)
 
     proc.stdin.write("scan off\n")
-    proc.stdin.flush()
-
     proc.stdin.write("devices\n")
+    proc.stdin.write("quit\n")
     proc.stdin.flush()
 
     output = proc.communicate()[0].splitlines()
 
     devices = []
-
     for line in output:
         if line.startswith("Device "):
             parts = line.split(" ", 2)
-            if len(parts) >= 3:
-                devices.append((parts[1], parts[2]))
+            devices.append((parts[1], parts[2]))
 
     return devices
 
-def forget_only_stale_devices(visible_devices, connected_devices):
-    visible = {mac for mac, _ in visible_devices}
-    connected = {mac for mac, _ in connected_devices}
-
-    known = run_cmd("bluetoothctl devices")
-    known_macs = {
-        line.split(" ", 2)[1]
-        for line in known
-        if line.startswith("Device ")
-    }
-
-    to_remove = known_macs - visible - connected
-
-    for mac in to_remove:
-        subprocess.call(f"bluetoothctl remove {mac}", shell=True)
-        
 def connect_device(mac):
     subprocess.call(f"bluetoothctl connect {mac}", shell=True)
 
@@ -153,18 +134,17 @@ class BluetoothIndicator:
     
         for item in self.devices_submenu.get_children():
             self.devices_submenu.remove(item)
-    
+            
         def connect_device_local(mac):
             subprocess.call(f"bluetoothctl disconnect {mac}", shell=True)
-            subprocess.call("sleep 1", shell=True)
+            import time
+            time.sleep(1)
             subprocess.call(f"bluetoothctl connect {mac}", shell=True)
     
         def worker():
             devices = scan_and_collect()
             connected_devices = get_connected_devices()
-            
-            forget_only_stale_devices(devices, connected_devices)
-    
+
             def update_ui():
     
                 # Limpiar conectados
@@ -180,6 +160,10 @@ class BluetoothIndicator:
                 # Conectados
                 for mac, name in connected_devices:
                     item = Gtk.MenuItem(label=f"❌ {name}")
+                    item.connect("activate", lambda _, m=mac: disconnect_device(m))
+                    self.connected_submenu.append(item)
+    
+                    
                     item.connect("activate", lambda _, m=mac: disconnect_device(m))
                     self.connected_submenu.append(item)
     

@@ -1,10 +1,3 @@
 #!/usr/bin/env bash
 
-comm -23 \
-<(bluetoothctl devices | awk '{print $2}' | sort) \
-<(bluetoothctl devices Connected | awk '{print $2}' | sort) |
-while read -r mac; do
-    bluetoothctl remove "$mac"
-done
-
 exec python3 "$HOME/.local/bin/.exec-bt-sc.py"
